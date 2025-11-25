@@ -50,25 +50,24 @@ def merge_excel_files(folder_path, output_file, max_headers):
     for file_name in excel_files:
         file_path = os.path.join(folder_path, file_name)
         df = pd.read_excel(file_path, header=None, engine='openpyxl')
+        header_start, headers = find_header_info(file_path)
+        header_row = header_start
         sections = []
-        i = 0
-        while i < len(df):
-            if df.iloc[i, 0] == "№":
-                start = i
-                # find end: next "Дата"
-                end = len(df)
-                for j in range(i+1, len(df)):
-                    if df.iloc[j, 0] == "Дата":
-                        end = j
-                        break
-                headers = df.iloc[start]
-                data = df.iloc[start+1:end]
-                columns = make_unique_columns(list(headers.values))
-                part_df = pd.DataFrame(data.values, columns=columns)
-                sections.append(part_df)
-                i = end
-            else:
-                i += 1
+        if headers:
+            positions = [i for i, h in enumerate(headers) if h == 'Дата']
+            start_idx = 0
+            for end_idx in positions:
+                section_cols = headers[start_idx:end_idx + 1]
+                section_df = df.iloc[header_row + 1:, start_idx:end_idx + 1].copy()
+                section_df.columns = make_unique_columns(section_cols)
+                sections.append(section_df)
+                start_idx = end_idx
+            # last section
+            if start_idx < len(headers):
+                section_cols = headers[start_idx:]
+                section_df = df.iloc[header_row + 1:, start_idx:].copy()
+                section_df.columns = make_unique_columns(section_cols)
+                sections.append(section_df)
         for section in sections:
             section_reindexed = section.reindex(columns=max_headers, fill_value=pd.NA)
             all_dfs.append(section_reindexed)
