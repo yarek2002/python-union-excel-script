@@ -55,14 +55,11 @@ def merge_excel_files(folder_path, output_file, max_headers):
         while i < len(df):
             if df.iloc[i, 0] == "№":
                 start = i
-                # find end: next "Дата" or next "№" -1
+                # find end: next "Дата"
                 end = len(df)
                 for j in range(i+1, len(df)):
                     if df.iloc[j, 0] == "Дата":
                         end = j
-                        break
-                    if df.iloc[j, 0] == "№":
-                        end = j - 1
                         break
                 headers = df.iloc[start]
                 data = df.iloc[start+1:end]
@@ -76,6 +73,8 @@ def merge_excel_files(folder_path, output_file, max_headers):
             section_reindexed = section.reindex(columns=max_headers, fill_value=pd.NA)
             all_dfs.append(section_reindexed)
 
+    if not all_dfs:
+        all_dfs = [pd.DataFrame(columns=max_headers)]
     merged_df = pd.concat(all_dfs, ignore_index=True)
     merged_df.to_excel(output_file, index=False)
 
