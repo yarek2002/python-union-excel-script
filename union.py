@@ -59,6 +59,7 @@ def merge_excel_files(folder_path, output_file, max_headers):
             for end_idx in positions:
                 section_cols = headers[start_idx:end_idx + 1]
                 section_df = df.iloc[header_row + 1:, start_idx:end_idx + 1].copy()
+                section_df = section_df.dropna(how='all')  # drop empty rows
                 section_df.columns = make_unique_columns(section_cols)
                 sections.append(section_df)
                 start_idx = end_idx
@@ -66,6 +67,7 @@ def merge_excel_files(folder_path, output_file, max_headers):
             if start_idx < len(headers):
                 section_cols = headers[start_idx:]
                 section_df = df.iloc[header_row + 1:, start_idx:].copy()
+                section_df = section_df.dropna(how='all')  # drop empty rows
                 section_df.columns = make_unique_columns(section_cols)
                 sections.append(section_df)
         for section in sections:
