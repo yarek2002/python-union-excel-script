@@ -20,18 +20,19 @@ def find_header_info(file_path):
     wb = load_workbook(file_path, read_only=True)
     ws = wb.active
     for row in range(1, ws.max_row + 1):
-        cell_value = ws[f'A{row}'].value
-        if cell_value and str(cell_value).startswith('№'):
-            headers = []
-            col = 1
-            while True:
-                cell = ws.cell(row=row, column=col)
-                if cell.value is None:
-                    break
-                headers.append(str(cell.value))
-                col += 1
-            return row - 1, headers
-    return 0, []
+        for col in range(1, ws.max_column + 1):
+            cell_value = ws.cell(row=row, column=col).value
+            if cell_value and str(cell_value).startswith('№'):
+                headers = []
+                start_col = col
+                while col <= ws.max_column:
+                    cell = ws.cell(row=row, column=col)
+                    if cell.value is None:
+                        break
+                    headers.append(str(cell.value))
+                    col += 1
+                return row - 1, start_col - 1, headers  # start_col 0-based
+    return 0, 0, []
 
 def get_max_headers(folder_path):
     excel_files = [f for f in os.listdir(folder_path) if f.endswith('.xlsx')]
@@ -50,7 +51,7 @@ def merge_excel_files(folder_path, output_file, max_headers):
     for file_name in excel_files:
         file_path = os.path.join(folder_path, file_name)
         df = pd.read_excel(file_path, header=None, engine='openpyxl')
-        header_start, headers = find_header_info(file_path)
+        header_start, start_col, headers = find_header_info(file_path)
         header_row = header_start
         sections = []
         if headers:
@@ -58,7 +59,9 @@ def merge_excel_files(folder_path, output_file, max_headers):
             start_idx = 0
             for end_idx in positions:
                 section_cols = headers[start_idx:end_idx + 1]
-                section_df = df.iloc[header_row + 1:, start_idx:end_idx + 1].copy()
+                col_start = start_col + start_idx
+                col_end = col_start + len(section_cols)
+                section_df = df.iloc[header_row + 1:, col_start:col_end].copy()
                 section_df = section_df.dropna(how='all')  # drop empty rows
                 section_df.columns = make_unique_columns(section_cols)
                 sections.append(section_df)
@@ -66,7 +69,8 @@ def merge_excel_files(folder_path, output_file, max_headers):
             # last section
             if start_idx < len(headers):
                 section_cols = headers[start_idx:]
-                section_df = df.iloc[header_row + 1:, start_idx:].copy()
+                col_start = start_col + start_idx
+                section_df = df.iloc[header_row + 1:, col_start:].copy()
                 section_df = section_df.dropna(how='all')  # drop empty rows
                 section_df.columns = make_unique_columns(section_cols)
                 sections.append(section_df)
