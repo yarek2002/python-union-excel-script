@@ -46,24 +46,15 @@ def find_header_info(file_path):
 
 def get_max_headers(folder_path):
     excel_files = [f for f in os.listdir(folder_path) if f.endswith('.xlsx')]
-
-    all_headers = []
+    union = []
     for file_name in excel_files:
         file_path = os.path.join(folder_path, file_name)
         _, _, headers = find_header_info(file_path)
         if headers:
-            all_headers.extend(headers)
-
-    # теперь делаем уникальность по всему набору
-    unique_union = make_unique_columns(all_headers)
-
-    # убираем дубликаты финальных имен, сохраняя порядок
-    seen = []
-    for h in unique_union:
-        if h not in seen:
-            seen.append(h)
-
-    return ['Файл'] + seen
+            for h in headers:
+                if h not in union:
+                    union.append(h)
+    return ['Файл'] + union  # ← БЕЗ уникализации здесь!
 
 
 def merge_excel_files(folder_path, output_file, max_headers):
@@ -72,71 +63,59 @@ def merge_excel_files(folder_path, output_file, max_headers):
 
     for file_name in excel_files:
         file_path = os.path.join(folder_path, file_name)
-        df = pd.read_excel(file_path, header=None, engine='openpyxl', dtype=str)
+        raw = pd.read_excel(file_path, header=None, engine='openpyxl', dtype=str)
+
         header_start, start_col, headers = find_header_info(file_path)
         header_row = header_start
-        sections = []
-        if headers:
-            positions = [i for i, h in enumerate(headers) if h == 'Дата']
-            start_idx = 0
-            for end_idx in positions:
-                section_cols = headers[start_idx:end_idx + 1]
-                col_start = start_col + start_idx
-                col_end = col_start + len(section_cols)
-                section_df = df.iloc[header_row + 1:, col_start:col_end].copy()
-                section_df = section_df.dropna(how='all')  # drop empty rows
-                section_df.columns = make_unique_columns(section_cols)
-                if start_idx == 0:  # only for first section
-                    # filter rows where first column is not numeric
-                    
-                    stop_idx = None
-                    for i in range(len(section_df)):
-                        val = section_df.iloc[i, 0]
-                        if pd.isna(val) or not is_numeric(val):
-                            stop_idx = i
-                            break
-                    if stop_idx is not None:
-                        section_df = section_df.iloc[:stop_idx]
-                sections.append(section_df)
-                start_idx = end_idx + 1 
-            # last section
-            if start_idx < len(headers):
-                section_cols = headers[start_idx:]
-                col_start = start_col + start_idx
-                section_df = df.iloc[header_row + 1:, col_start:].copy()
-                section_df = section_df.dropna(how='all')  # drop empty rows
-                section_df.columns = make_unique_columns(section_cols)
-                # filter rows where first column is not numeric
-                stop_idx = None
-                for i in range(len(section_df)):
-                    if section_df.iloc[i].isna().all():  # ← ВСЯ строка пустая
-                        stop_idx = i
-                        break
-                if stop_idx is not None:
-                    section_df = section_df.iloc[:stop_idx]
-                sections.append(section_df)
-        if sections:
-            # file_df = horizontal concat of sections
-            file_df = pd.concat(sections, axis=1, ignore_index=False)
-            file_df.columns = make_unique_columns(list(file_df.columns))
-            file_df.insert(0, 'Файл', file_name)
-            file_df_reindexed = file_df.reindex(columns=max_headers, fill_value=pd.NA)
-            all_dfs.append(file_df_reindexed)
+
+        if not headers:
+            continue
+
+        #  Уникализируем шапку один раз, целиком (все секции будут совпадать между файлами)
+        unique_headers = make_unique_columns(headers)
+
+        #  Вырезаем до конца документа, но ограничиваем первую секцию как раньше по №
+        body = raw.iloc[header_row + 1:, start_col: start_col + len(unique_headers)].copy()
+        body.columns = unique_headers
+        body = body.dropna(how='all')
+
+        # обрезка первой секции по numeric №
+        if "№-1" in body.columns or "№" in body.columns:
+            first_col = body.columns[0]
+            stop_idx = None
+            for i in range(len(body)):
+                val = body.iloc[i, 0]
+                if pd.isna(val) or not is_numeric(val):
+                    stop_idx = i
+                    break
+            if stop_idx is not None:
+                body = body.iloc[:stop_idx]
+
+        #  Обрезаем последнюю секцию по пустой строке
+        stop_idx = None
+        for i in range(len(body)):
+            if body.iloc[i].isna().all():
+                stop_idx = i
+                break
+        if stop_idx is not None:
+            body = body.iloc[:stop_idx]
+
+        #  Вставляем столбец Файл
+        body.insert(0, "Файл", file_name)
+
+        #  Делаем reindex по сырым заголовкам + unique-суффиксы уже совпадают
+        body = body.reindex(columns=max_headers, fill_value=pd.NA)
+
+        all_dfs.append(body)
 
     if not all_dfs:
         all_dfs = [pd.DataFrame(columns=max_headers)]
+
     merged_df = pd.concat(all_dfs, ignore_index=True)
 
+    #  Убираем время из всех Дата-X
     date_columns = [c for c in merged_df.columns if c.startswith("Дата")]
     for col in date_columns:
         merged_df[col] = pd.to_datetime(merged_df[col], errors='coerce').dt.strftime("%d-%m-%Y")
 
     merged_df.to_excel(output_file, index=False)
-
-if __name__ == "__main__":
-    folder_path =	os.getcwd()  # current directory
-    current_date = datetime.now().strftime("%Y-%m-%d")
-    output_file = f"объединенный файл {current_date}.xlsx"
-    max_headers = get_max_headers(folder_path)
-    merge_excel_files(folder_path, output_file, max_headers)
-    print(f"Объединенный файл сохранен как {output_file}")
