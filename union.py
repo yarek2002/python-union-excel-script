@@ -7,129 +7,126 @@ from collections import Counter, defaultdict
 def is_numeric(s):
     if pd.isna(s):
         return False
-    s = str(s).strip()
     try:
-        float(s)
+        float(str(s).replace(',', '.'))
         return True
     except:
         return False
 
-def make_unique_columns(headers):
+def unique_within_file(headers):
+    """Уникализация повторов только внутри одного файла"""
     count = Counter(headers)
     version = defaultdict(int)
-    unique_cols = []
+    result = []
     for h in headers:
         if count[h] > 1:
             version[h] += 1
-            unique_cols.append(f"{h}-{version[h]}")
+            result.append(f"{h}-{version[h]}")
         else:
-            unique_cols.append(h)
-    return unique_cols
+            result.append(h)
+    return result
 
 def find_header_info(file_path):
     wb = load_workbook(file_path, read_only=True)
     ws = wb.active
-    for row in range(1, ws.max_row + 1):
-        for col in range(1, ws.max_column + 1):
-            cell_value = ws.cell(row=row, column=col).value
-            if cell_value and str(cell_value).startswith('№'):
+    for r in range(1, ws.max_row + 1):
+        for c in range(1, ws.max_column + 1):
+            v = ws.cell(r, c).value
+            if v and str(v).startswith("№"):
                 headers = []
-                start_col = col
-                while col <= ws.max_column:
-                    cell = ws.cell(row=row, column=col)
+                start_col = c
+                while c <= ws.max_column:
+                    cell = ws.cell(r, c)
                     if cell.value is None:
                         break
                     headers.append(str(cell.value))
-                    col += 1
-                return row - 1, start_col - 1, headers
+                    c += 1
+                return r - 1, start_col - 1, headers
     return 0, 0, []
 
-def get_max_headers(folder_path):
-    excel_files = [f for f in os.listdir(folder_path) if f.endswith('.xlsx')]
-    union = []
-    for file_name in excel_files:
-        file_path = os.path.join(folder_path, file_name)
-        _, _, headers = find_header_info(file_path)
-        if headers:
-            for h in headers:
-                if h not in union:
-                    union.append(h)
-    return ['Файл'] + union
+def merge_excel_files(folder_path, output_file):
+    files = [f for f in os.listdir(folder_path) if f.endswith(".xlsx")]
+    merged = []
 
-def merge_excel_files(folder_path, output_file, max_headers):
-    all_dfs = []
-    excel_files = [f for f in os.listdir(folder_path) if f.endswith('.xlsx')]
-
-    for file_name in excel_files:
-
-        # 🚫 Не объединяем сам выходной файл, если он уже создан в той же папке
-        if file_name.startswith("объединенный файл"):
+    for name in files:
+        if name.startswith("объединенный файл"):
             continue
 
-        file_path = os.path.join(folder_path, file_name)
-        raw = pd.read_excel(file_path, header=None, engine='openpyxl', dtype=str)
+        path = os.path.join(folder_path, name)
+        raw = pd.read_excel(path, header=None, engine="openpyxl", dtype=str)
 
-        header_start, start_col, headers = find_header_info(file_path)
-        header_row = header_start
-
+        header_start, start_col, headers = find_header_info(path)
         if not headers:
             continue
 
-        unique_headers = make_unique_columns(headers)
+        # 1. Делаем уникальные заголовки внутри файла
+        headers = unique_within_file(headers)
 
-        body = raw.iloc[header_row + 1:, start_col: start_col + len(unique_headers)].copy()
-        body.columns = unique_headers
-        body = body.dropna(how='all')
+        # 2. Находим позиции колонок "Дата-1", "Дата-2", "Дата-3" ...
+        date_positions = [i for i, h in enumerate(headers) if h.startswith("Дата")]
 
-        # обрезка первой секции по numeric №
-        first_col = body.columns[0]
-        stop_idx = None
-        for i in range(len(body)):
-            val = body.iloc[i, 0]
-            if pd.isna(val) or not is_numeric(val):
-                stop_idx = i
-                break
-        if stop_idx is not None:
-            body = body.iloc[:stop_idx]
+        # 3. Нарезаем секции по этим позициям (как раньше)
+        idx = 0
+        for pos in date_positions:
+            cols = headers[idx:pos + 1]
+            cs = start_col + idx
+            ce = cs + len(cols)
+            sec = raw.iloc[header_start + 1:, cs:ce].dropna(how="all")
+            sec.columns = cols
 
-        # обрезка последней секции по полностью пустой строке
-        stop_idx = None
-        for i in range(len(body)):
-            if body.iloc[i].isna().all():
-                stop_idx = i
-                break
-        if stop_idx is not None:
-            body = body.iloc[:stop_idx]
+            # Обрезка первой секции по numeric № (как было раньше)
+            if idx == 0:
+                stop = None
+                for i in range(len(sec)):
+                    if not is_numeric(sec.iloc[i, 0]):
+                        stop = i
+                        break
+                if stop is not None:
+                    sec = sec.iloc[:stop]
 
-        body.insert(0, "Файл", file_name)
-        body = body.reindex(columns=max_headers, fill_value=pd.NA)
-        all_dfs.append(body)
+            # Обрезка секции по первой полностью пустой строке
+            stop = None
+            for i in range(len(sec)):
+                if sec.iloc[i].isna().all():
+                    stop = i
+                    break
+            if stop is not None:
+                sec = sec.iloc[:stop]
 
-    if not all_dfs:
-        all_dfs = [pd.DataFrame(columns=max_headers)]
+            merged.append(sec)
+            idx = pos + 1
 
-    merged_df = pd.concat(all_dfs, ignore_index=True)
+        # Последняя секция после последней "Дата-X"
+        if idx < len(headers):
+            cols = headers[idx:]
+            sec = raw.iloc[header_start + 1:, start_col + idx:].dropna(how="all")
+            sec.columns = cols
 
-    date_columns = [c for c in merged_df.columns if c.startswith("Дата")]
-    for col in date_columns:
-        merged_df[col] = pd.to_datetime(merged_df[col], errors='coerce').dt.strftime("%d-%m-%Y")
+            stop = None
+            for i in range(len(sec)):
+                if sec.iloc[i].isna().all():
+                    stop = i
+                    break
+            if stop is not None:
+                sec = sec.iloc[:stop]
 
-    merged_df.to_excel(output_file, index=False)
+            merged.append(sec)
+
+    # Горизонтальное объединение секций
+    final_df = pd.concat(merged, axis=1)
+    final_df.insert(0, "Файл", name)
+
+    # Убираем время из всех колонок Дата-X (как раньше в коде)
+    for c in final_df.columns:
+        if c.startswith("Дата"):
+            final_df[c] = pd.to_datetime(final_df[c], errors='coerce').dt.strftime("%d-%m-%Y")
+
+    final_df.to_excel(output_file, index=False)
+    print("готово")
 
 if __name__ == "__main__":
-    try:
-        folder_path = os.getcwd()
-        current_date = datetime.now().strftime("%Y-%m-%d")
-        output_file = f"объединенный файл {current_date}.xlsx"
-
-        max_headers = get_max_headers(folder_path)
-
-        merge_excel_files(folder_path, output_file, max_headers)
-        print(f"Файлы успешно объединены в: {output_file}")
-
-    except Exception as e:
-        # ✅ Теперь ошибка выведется в CMD и вы НЕ потеряете окно
-        print("\n❗ Скрипт упал с ошибкой:\n", e)
-
-    # ⏸ Пауза всегда выполняется, даже если была ошибка
+    folder = os.getcwd()
+    date = datetime.now().strftime("%Y-%m-%d")
+    out = f"объединенный файл {date}.xlsx"
+    merge_excel_files(folder, out)
     os.system("pause")
