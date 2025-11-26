@@ -39,7 +39,7 @@ def get_max_headers(folder_path):
     max_headers = []
     for file_name in excel_files:
         file_path = os.path.join(folder_path, file_name)
-        _, headers = find_header_info(file_path)
+        _, _, headers = find_header_info(file_path)
         if len(headers) > len(max_headers):
             max_headers = headers
     return make_unique_columns(max_headers)
