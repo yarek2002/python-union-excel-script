@@ -85,7 +85,7 @@ def merge_excel_files(folder_path, output_file, max_headers):
                     if stop_idx is not None:
                         section_df = section_df.iloc[:stop_idx]
                 sections.append(section_df)
-                start_idx = end_idx
+                start_idx = end_idx + 1 
             # last section
             if start_idx < len(headers):
                 section_cols = headers[start_idx:]
