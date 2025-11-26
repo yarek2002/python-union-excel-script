@@ -74,9 +74,12 @@ def merge_excel_files(folder_path, output_file, max_headers):
                 section_df = section_df.dropna(how='all')  # drop empty rows
                 section_df.columns = make_unique_columns(section_cols)
                 sections.append(section_df)
-        for section in sections:
-            section_reindexed = section.reindex(columns=max_headers, fill_value=pd.NA)
-            all_dfs.append(section_reindexed)
+        if sections:
+            # file_df = horizontal concat of sections
+            file_df = pd.concat(sections, axis=1, ignore_index=False)
+            file_df.columns = make_unique_columns(list(file_df.columns))
+            file_df_reindexed = file_df.reindex(columns=max_headers, fill_value=pd.NA)
+            all_dfs.append(file_df_reindexed)
 
     if not all_dfs:
         all_dfs = [pd.DataFrame(columns=max_headers)]
