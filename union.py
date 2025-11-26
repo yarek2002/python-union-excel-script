@@ -50,7 +50,7 @@ def merge_excel_files(folder_path, output_file, max_headers):
 
     for file_name in excel_files:
         file_path = os.path.join(folder_path, file_name)
-        df = pd.read_excel(file_path, header=None, engine='openpyxl')
+        df = pd.read_excel(file_path, header=None, engine='openpyxl', dtype=str)
         header_start, start_col, headers = find_header_info(file_path)
         header_row = header_start
         sections = []
