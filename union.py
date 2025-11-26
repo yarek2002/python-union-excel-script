@@ -1,4 +1,5 @@
 import os
+import traceback
 import pandas as pd
 from openpyxl import load_workbook
 from datetime import datetime
@@ -35,46 +36,58 @@ def find_header_info(file_path):
             if v and str(v).startswith("№"):
                 headers = []
                 start_col = c
-                while c <= ws.max_column:
-                    cell = ws.cell(r, c)
+                cc = c
+                while cc <= ws.max_column:
+                    cell = ws.cell(r, cc)
                     if cell.value is None:
                         break
                     headers.append(str(cell.value))
-                    c += 1
+                    cc += 1
                 return r - 1, start_col - 1, headers
     return 0, 0, []
 
+def get_all_files(folder_path):
+    return [f for f in os.listdir(folder_path) if f.endswith(".xlsx")]
+
 def merge_excel_files(folder_path, output_file):
-    files = [f for f in os.listdir(folder_path) if f.endswith(".xlsx")]
-    merged = []
+    all_dfs = []
+    files = get_all_files(folder_path)
 
     for name in files:
+        # не обрабатывать выходной файл, если он в той же папке
         if name.startswith("объединенный файл"):
             continue
 
         path = os.path.join(folder_path, name)
-        raw = pd.read_excel(path, header=None, engine="openpyxl", dtype=str)
+        try:
+            raw = pd.read_excel(path, header=None, engine="openpyxl", dtype=str)
+        except Exception as e:
+            print(f"Не удалось прочитать {name}: {e}")
+            continue
 
         header_start, start_col, headers = find_header_info(path)
         if not headers:
+            print(f"В файле {name} не найдена шапка (№...), пропускаю.")
             continue
 
-        # 1. Делаем уникальные заголовки внутри файла
-        headers = unique_within_file(headers)
+        # уникализируем заголовки внутри файла: Дата -> Дата-1, Дата-2 ...
+        headers_unique = unique_within_file(headers)
 
-        # 2. Находим позиции колонок "Дата-1", "Дата-2", "Дата-3" ...
-        date_positions = [i for i, h in enumerate(headers) if h.startswith("Дата")]
+        # позиции колонок с "Дата" (теперь с суффиксом, но проверяем по началу)
+        date_positions = [i for i, h in enumerate(headers_unique) if h.startswith("Дата")]
 
-        # 3. Нарезаем секции по этим позициям (как раньше)
+        sections = []
         idx = 0
+        # нарезаем секции до каждой Даты (включительно)
         for pos in date_positions:
-            cols = headers[idx:pos + 1]
+            cols = headers_unique[idx:pos + 1]
             cs = start_col + idx
             ce = cs + len(cols)
-            sec = raw.iloc[header_start + 1:, cs:ce].dropna(how="all")
+            sec = raw.iloc[header_start + 1:, cs:ce].copy()
             sec.columns = cols
+            sec = sec.dropna(how="all")
 
-            # Обрезка первой секции по numeric № (как было раньше)
+            # для первой секции — обрезаем по первому нечисловому в колонке №
             if idx == 0:
                 stop = None
                 for i in range(len(sec)):
@@ -84,7 +97,7 @@ def merge_excel_files(folder_path, output_file):
                 if stop is not None:
                     sec = sec.iloc[:stop]
 
-            # Обрезка секции по первой полностью пустой строке
+            # обрезаем секцию по первой полностью пустой строке
             stop = None
             for i in range(len(sec)):
                 if sec.iloc[i].isna().all():
@@ -93,15 +106,19 @@ def merge_excel_files(folder_path, output_file):
             if stop is not None:
                 sec = sec.iloc[:stop]
 
-            merged.append(sec)
+            # если секция пустая — создаём пустой DF с нужными столбцами, чтобы concat не падал
+            if sec.shape[0] == 0:
+                sec = pd.DataFrame(columns=cols)
+
+            sections.append(sec)
             idx = pos + 1
 
-        # Последняя секция после последней "Дата-X"
-        if idx < len(headers):
-            cols = headers[idx:]
-            sec = raw.iloc[header_start + 1:, start_col + idx:].dropna(how="all")
+        # последняя секция после последней "Дата"
+        if idx < len(headers_unique):
+            cols = headers_unique[idx:]
+            sec = raw.iloc[header_start + 1:, start_col + idx:].copy()
             sec.columns = cols
-
+            sec = sec.dropna(how="all")
             stop = None
             for i in range(len(sec)):
                 if sec.iloc[i].isna().all():
@@ -109,24 +126,61 @@ def merge_excel_files(folder_path, output_file):
                     break
             if stop is not None:
                 sec = sec.iloc[:stop]
+            if sec.shape[0] == 0:
+                sec = pd.DataFrame(columns=cols)
+            sections.append(sec)
 
-            merged.append(sec)
+        # если не найдено ни одной секции — пропускаем файл
+        if not sections:
+            print(f"В файле {name} не найдено секций после нарезки — пропускаю.")
+            continue
 
-    # Горизонтальное объединение секций
-    final_df = pd.concat(merged, axis=1)
-    final_df.insert(0, "Файл", name)
+        # теперь горизонтально склеиваем секции внутри этого файла
+        try:
+            file_df = pd.concat(sections, axis=1, ignore_index=False)
+        except Exception as e:
+            # для отладки: сохраним размеры секций
+            sizes = [s.shape for s in sections]
+            raise RuntimeError(f"Ошибка при горизонтальном concat в файле {name}. sizes={sizes}. error={e}")
 
-    # Убираем время из всех колонок Дата-X (как раньше в коде)
-    for c in final_df.columns:
-        if c.startswith("Дата"):
-            final_df[c] = pd.to_datetime(final_df[c], errors='coerce').dt.strftime("%d-%m-%Y")
+        # вставляем имя файла и выравниваем индексы
+        file_df.insert(0, "Файл", name)
 
-    final_df.to_excel(output_file, index=False)
-    print("готово")
+        # удаляем полностью пустые колонки (если они появились)
+        file_df = file_df.dropna(axis=1, how="all")
+
+        all_dfs.append(file_df)
+
+    if not all_dfs:
+        merged_df = pd.DataFrame()
+    else:
+        # вертикально соединяем все файлы (каждый file_df должен иметь одинаковые кол-ва колонок, но если нет — pandas проставит NaN)
+        merged_df = pd.concat(all_dfs, ignore_index=True, sort=False)
+
+    # убираем время из колонок Дата-*
+    if not merged_df.empty:
+        date_columns = [c for c in merged_df.columns if str(c).startswith("Дата")]
+        for col in date_columns:
+            merged_df[col] = pd.to_datetime(merged_df[col], errors='coerce').dt.strftime("%d-%m-%Y")
+
+    # сохраняем результат
+    merged_df.to_excel(output_file, index=False)
+    return output_file
 
 if __name__ == "__main__":
-    folder = os.getcwd()
-    date = datetime.now().strftime("%Y-%m-%d")
-    out = f"объединенный файл {date}.xlsx"
-    merge_excel_files(folder, out)
-    os.system("pause")
+    try:
+        folder = os.getcwd()
+        outname = f"объединенный файл {datetime.now().strftime('%Y-%m-%d')}.xlsx"
+        print("Папка:", folder)
+        print("Файлы для обработки:", get_all_files(folder))
+        res = merge_excel_files(folder, outname)
+        print("Успешно сохранено:", res)
+    except Exception as exc:
+        tb = traceback.format_exc()
+        print("Скрипт упал с ошибкой:\n", tb)
+        # записать лог для удобного анализа
+        with open("error_log.txt", "w", encoding="utf-8") as f:
+            f.write(tb)
+        print("Трассировка записана в error_log.txt")
+    finally:
+        os.system("pause")
