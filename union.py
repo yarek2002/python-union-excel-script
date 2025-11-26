@@ -4,6 +4,16 @@ from openpyxl import load_workbook
 from datetime import datetime
 from collections import Counter, defaultdict
 
+def is_numeric(s):
+    if pd.isna(s):
+        return False
+    s = str(s).strip()
+    try:
+        float(s)
+        return True
+    except:
+        return False
+
 def make_unique_columns(headers):
     count = Counter(headers)
     version = defaultdict(int)
@@ -69,7 +79,7 @@ def merge_excel_files(folder_path, output_file, max_headers):
                     stop_idx = None
                     for i in range(len(section_df)):
                         val = section_df.iloc[i, 0]
-                        if pd.isna(val) or not str(val).strip().isdigit():
+                        if pd.isna(val) or not is_numeric(val):
                             stop_idx = i
                             break
                     if stop_idx is not None:
@@ -87,7 +97,7 @@ def merge_excel_files(folder_path, output_file, max_headers):
                 stop_idx = None
                 for i in range(len(section_df)):
                     val = section_df.iloc[i, 0]
-                    if pd.isna(val) or not str(val).strip().isdigit():
+                    if pd.isna(val) or not is_numeric(val):
                         stop_idx = i
                         break
                 if stop_idx is not None:
