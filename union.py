@@ -14,11 +14,6 @@ def is_numeric(s):
     except:
         return False
 
-def clean_date_string(s):
-    if isinstance(s, str) and ' ' in s and '00:00:00' in s:
-        return s.split(' ')[0]
-    return s
-
 def make_unique_columns(headers):
     count = Counter(headers)
     version = defaultdict(int)
@@ -51,13 +46,13 @@ def find_header_info(file_path):
 
 def get_max_headers(folder_path):
     excel_files = [f for f in os.listdir(folder_path) if f.endswith('.xlsx')]
-    all_cols = set()
+    max_headers = []
     for file_name in excel_files:
         file_path = os.path.join(folder_path, file_name)
         _, _, headers = find_header_info(file_path)
-        all_cols.update(make_unique_columns(headers))
-    sorted_cols = sorted(all_cols)
-    return ['Файл'] + sorted_cols
+        if len(headers) > len(max_headers):
+            max_headers = headers
+    return ['Файл'] + make_unique_columns(max_headers)
 
 def merge_excel_files(folder_path, output_file, max_headers):
     all_dfs = []
@@ -66,7 +61,6 @@ def merge_excel_files(folder_path, output_file, max_headers):
     for file_name in excel_files:
         file_path = os.path.join(folder_path, file_name)
         df = pd.read_excel(file_path, header=None, engine='openpyxl', dtype=str)
-        df = df.apply(lambda x: x.apply(clean_date_string))
         header_start, start_col, headers = find_header_info(file_path)
         header_row = header_start
         sections = []
@@ -120,11 +114,16 @@ def merge_excel_files(folder_path, output_file, max_headers):
     if not all_dfs:
         all_dfs = [pd.DataFrame(columns=max_headers)]
     merged_df = pd.concat(all_dfs, ignore_index=True)
+
+    date_columns = [c for c in merged_df.columns if c.startswith("Дата")]
+    for col in date_columns:
+        merged_df[col] = pd.to_datetime(merged_df[col], errors='coerce').dt.strftime("%d-%m-%Y")
+        
     merged_df.to_excel(output_file, index=False)
 
 if __name__ == "__main__":
     folder_path =	os.getcwd()  # current directory
-    current_date = datetime.now().strftime("%d.%m.%Y")
+    current_date = datetime.now().strftime("%Y-%m-%d")
     output_file = f"объединенный файл {current_date}.xlsx"
     max_headers = get_max_headers(folder_path)
     merge_excel_files(folder_path, output_file, max_headers)
