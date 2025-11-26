@@ -64,15 +64,16 @@ def merge_excel_files(folder_path, output_file, max_headers):
                 section_df = df.iloc[header_row + 1:, col_start:col_end].copy()
                 section_df = section_df.dropna(how='all')  # drop empty rows
                 section_df.columns = make_unique_columns(section_cols)
-                # filter rows where first column is not numeric
-                stop_idx = None
-                for i in range(len(section_df)):
-                    val = section_df.iloc[i, 0]
-                    if pd.isna(val) or not str(val).strip().isdigit():
-                        stop_idx = i
-                        break
-                if stop_idx is not None:
-                    section_df = section_df.iloc[:stop_idx]
+                if start_idx == 0:  # only for first section
+                    # filter rows where first column is not numeric
+                    stop_idx = None
+                    for i in range(len(section_df)):
+                        val = section_df.iloc[i, 0]
+                        if pd.isna(val) or not str(val).strip().isdigit():
+                            stop_idx = i
+                            break
+                    if stop_idx is not None:
+                        section_df = section_df.iloc[:stop_idx]
                 sections.append(section_df)
                 start_idx = end_idx
             # last section
