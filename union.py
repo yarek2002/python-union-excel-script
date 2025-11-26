@@ -14,6 +14,11 @@ def is_numeric(s):
     except:
         return False
 
+def clean_date_string(s):
+    if isinstance(s, str) and ' ' in s and '00:00:00' in s:
+        return s.split(' ')[0]
+    return s
+
 def make_unique_columns(headers):
     count = Counter(headers)
     version = defaultdict(int)
@@ -46,13 +51,13 @@ def find_header_info(file_path):
 
 def get_max_headers(folder_path):
     excel_files = [f for f in os.listdir(folder_path) if f.endswith('.xlsx')]
-    max_headers = []
+    all_cols = set()
     for file_name in excel_files:
         file_path = os.path.join(folder_path, file_name)
         _, _, headers = find_header_info(file_path)
-        if len(headers) > len(max_headers):
-            max_headers = headers
-    return ['Файл'] + make_unique_columns(max_headers)
+        all_cols.update(make_unique_columns(headers))
+    sorted_cols = sorted(all_cols)
+    return ['Файл'] + sorted_cols
 
 def merge_excel_files(folder_path, output_file, max_headers):
     all_dfs = []
@@ -61,6 +66,7 @@ def merge_excel_files(folder_path, output_file, max_headers):
     for file_name in excel_files:
         file_path = os.path.join(folder_path, file_name)
         df = pd.read_excel(file_path, header=None, engine='openpyxl', dtype=str)
+        df = df.apply(lambda x: x.apply(clean_date_string))
         header_start, start_col, headers = find_header_info(file_path)
         header_row = header_start
         sections = []
