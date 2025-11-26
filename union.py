@@ -46,13 +46,25 @@ def find_header_info(file_path):
 
 def get_max_headers(folder_path):
     excel_files = [f for f in os.listdir(folder_path) if f.endswith('.xlsx')]
-    max_headers = []
+
+    all_headers = []
     for file_name in excel_files:
         file_path = os.path.join(folder_path, file_name)
         _, _, headers = find_header_info(file_path)
-        if len(headers) > len(max_headers):
-            max_headers = headers
-    return ['Файл'] + make_unique_columns(max_headers)
+        if headers:
+            all_headers.extend(headers)
+
+    # теперь делаем уникальность по всему набору
+    unique_union = make_unique_columns(all_headers)
+
+    # убираем дубликаты финальных имен, сохраняя порядок
+    seen = []
+    for h in unique_union:
+        if h not in seen:
+            seen.append(h)
+
+    return ['Файл'] + seen
+
 
 def merge_excel_files(folder_path, output_file, max_headers):
     all_dfs = []
@@ -99,7 +111,7 @@ def merge_excel_files(folder_path, output_file, max_headers):
                 for i in range(len(section_df)):
                     if section_df.iloc[i].isna().all():  # ← ВСЯ строка пустая
                         stop_idx = i
-                    break
+                        break
                 if stop_idx is not None:
                     section_df = section_df.iloc[:stop_idx]
                 sections.append(section_df)
