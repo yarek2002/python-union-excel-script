@@ -76,6 +76,7 @@ def merge_excel_files(folder_path, output_file, max_headers):
                 section_df.columns = make_unique_columns(section_cols)
                 if start_idx == 0:  # only for first section
                     # filter rows where first column is not numeric
+                    
                     stop_idx = None
                     for i in range(len(section_df)):
                         val = section_df.iloc[i, 0]
@@ -96,10 +97,9 @@ def merge_excel_files(folder_path, output_file, max_headers):
                 # filter rows where first column is not numeric
                 stop_idx = None
                 for i in range(len(section_df)):
-                    val = section_df.iloc[i, 0]
-                    if pd.isna(val) or not is_numeric(val):
+                    if section_df.iloc[i].isna().all():  # ← ВСЯ строка пустая
                         stop_idx = i
-                        break
+                    break
                 if stop_idx is not None:
                     section_df = section_df.iloc[:stop_idx]
                 sections.append(section_df)
@@ -118,7 +118,7 @@ def merge_excel_files(folder_path, output_file, max_headers):
     date_columns = [c for c in merged_df.columns if c.startswith("Дата")]
     for col in date_columns:
         merged_df[col] = pd.to_datetime(merged_df[col], errors='coerce').dt.strftime("%d-%m-%Y")
-        
+
     merged_df.to_excel(output_file, index=False)
 
 if __name__ == "__main__":
