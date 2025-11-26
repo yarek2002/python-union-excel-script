@@ -41,7 +41,7 @@ def find_header_info(file_path):
                         break
                     headers.append(str(cell.value))
                     col += 1
-                return row - 1, start_col - 1, headers  # start_col 0-based
+                return row - 1, start_col - 1, headers
     return 0, 0, []
 
 def get_max_headers(folder_path):
@@ -54,14 +54,18 @@ def get_max_headers(folder_path):
             for h in headers:
                 if h not in union:
                     union.append(h)
-    return ['Файл'] + union  # ← БЕЗ уникализации здесь!
-
+    return ['Файл'] + union
 
 def merge_excel_files(folder_path, output_file, max_headers):
     all_dfs = []
     excel_files = [f for f in os.listdir(folder_path) if f.endswith('.xlsx')]
 
     for file_name in excel_files:
+
+        # 🚫 Не объединяем сам выходной файл, если он уже создан в той же папке
+        if file_name.startswith("объединенный файл"):
+            continue
+
         file_path = os.path.join(folder_path, file_name)
         raw = pd.read_excel(file_path, header=None, engine='openpyxl', dtype=str)
 
@@ -71,27 +75,24 @@ def merge_excel_files(folder_path, output_file, max_headers):
         if not headers:
             continue
 
-        #  Уникализируем шапку один раз, целиком (все секции будут совпадать между файлами)
         unique_headers = make_unique_columns(headers)
 
-        #  Вырезаем до конца документа, но ограничиваем первую секцию как раньше по №
         body = raw.iloc[header_row + 1:, start_col: start_col + len(unique_headers)].copy()
         body.columns = unique_headers
         body = body.dropna(how='all')
 
         # обрезка первой секции по numeric №
-        if "№-1" in body.columns or "№" in body.columns:
-            first_col = body.columns[0]
-            stop_idx = None
-            for i in range(len(body)):
-                val = body.iloc[i, 0]
-                if pd.isna(val) or not is_numeric(val):
-                    stop_idx = i
-                    break
-            if stop_idx is not None:
-                body = body.iloc[:stop_idx]
+        first_col = body.columns[0]
+        stop_idx = None
+        for i in range(len(body)):
+            val = body.iloc[i, 0]
+            if pd.isna(val) or not is_numeric(val):
+                stop_idx = i
+                break
+        if stop_idx is not None:
+            body = body.iloc[:stop_idx]
 
-        #  Обрезаем последнюю секцию по пустой строке
+        # обрезка последней секции по полностью пустой строке
         stop_idx = None
         for i in range(len(body)):
             if body.iloc[i].isna().all():
@@ -100,12 +101,8 @@ def merge_excel_files(folder_path, output_file, max_headers):
         if stop_idx is not None:
             body = body.iloc[:stop_idx]
 
-        #  Вставляем столбец Файл
         body.insert(0, "Файл", file_name)
-
-        #  Делаем reindex по сырым заголовкам + unique-суффиксы уже совпадают
         body = body.reindex(columns=max_headers, fill_value=pd.NA)
-
         all_dfs.append(body)
 
     if not all_dfs:
@@ -113,23 +110,26 @@ def merge_excel_files(folder_path, output_file, max_headers):
 
     merged_df = pd.concat(all_dfs, ignore_index=True)
 
-    #  Убираем время из всех Дата-X
     date_columns = [c for c in merged_df.columns if c.startswith("Дата")]
     for col in date_columns:
         merged_df[col] = pd.to_datetime(merged_df[col], errors='coerce').dt.strftime("%d-%m-%Y")
 
     merged_df.to_excel(output_file, index=False)
+
 if __name__ == "__main__":
-    folder_path = os.getcwd()
-    current_date = datetime.now().strftime("%Y-%m-%d")
-    output_file = f"объединенный файл {current_date}.xlsx"
+    try:
+        folder_path = os.getcwd()
+        current_date = datetime.now().strftime("%Y-%m-%d")
+        output_file = f"объединенный файл {current_date}.xlsx"
 
-    max_headers = get_max_headers(folder_path)
+        max_headers = get_max_headers(folder_path)
 
-#  ВЫЗЫВАЕМ функцию объединения
-    merge_excel_files(folder_path, output_file, max_headers)
+        merge_excel_files(folder_path, output_file, max_headers)
+        print(f"Файлы успешно объединены в: {output_file}")
 
-    print(f"Объединенный файл сохранен как {output_file}")
+    except Exception as e:
+        # ✅ Теперь ошибка выведется в CMD и вы НЕ потеряете окно
+        print("\n❗ Скрипт упал с ошибкой:\n", e)
 
-#  Чтобы окно не закрывалось сразу (для Windows)
+    # ⏸ Пауза всегда выполняется, даже если была ошибка
     os.system("pause")
