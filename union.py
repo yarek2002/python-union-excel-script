@@ -42,7 +42,7 @@ def get_max_headers(folder_path):
         _, _, headers = find_header_info(file_path)
         if len(headers) > len(max_headers):
             max_headers = headers
-    return make_unique_columns(max_headers)
+    return ['Файл'] + make_unique_columns(max_headers)
 
 def merge_excel_files(folder_path, output_file, max_headers):
     all_dfs = []
@@ -78,6 +78,7 @@ def merge_excel_files(folder_path, output_file, max_headers):
             # file_df = horizontal concat of sections
             file_df = pd.concat(sections, axis=1, ignore_index=False)
             file_df.columns = make_unique_columns(list(file_df.columns))
+            file_df.insert(0, 'Файл', file_name)
             file_df_reindexed = file_df.reindex(columns=max_headers, fill_value=pd.NA)
             all_dfs.append(file_df_reindexed)
 
