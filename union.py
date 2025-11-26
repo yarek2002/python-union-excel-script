@@ -118,7 +118,7 @@ def merge_excel_files(folder_path, output_file, max_headers):
 
 if __name__ == "__main__":
     folder_path =	os.getcwd()  # current directory
-    current_date = datetime.now().strftime("%Y-%m-%d")
+    current_date = datetime.now().strftime("%d.%m.%Y")
     output_file = f"объединенный файл {current_date}.xlsx"
     max_headers = get_max_headers(folder_path)
     merge_excel_files(folder_path, output_file, max_headers)
