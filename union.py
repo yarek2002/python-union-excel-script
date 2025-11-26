@@ -119,17 +119,17 @@ def merge_excel_files(folder_path, output_file, max_headers):
         merged_df[col] = pd.to_datetime(merged_df[col], errors='coerce').dt.strftime("%d-%m-%Y")
 
     merged_df.to_excel(output_file, index=False)
-    if __name__ == "__main__":
-        folder_path = os.getcwd()
-        current_date = datetime.now().strftime("%Y-%m-%d")
-        output_file = f"объединенный файл {current_date}.xlsx"
+if __name__ == "__main__":
+    folder_path = os.getcwd()
+    current_date = datetime.now().strftime("%Y-%m-%d")
+    output_file = f"объединенный файл {current_date}.xlsx"
 
-        max_headers = get_max_headers(folder_path)
+    max_headers = get_max_headers(folder_path)
 
-    #  ВЫЗЫВАЕМ функцию объединения
-        merge_excel_files(folder_path, output_file, max_headers)
+#  ВЫЗЫВАЕМ функцию объединения
+    merge_excel_files(folder_path, output_file, max_headers)
 
-        print(f"Объединенный файл сохранен как {output_file}")
+    print(f"Объединенный файл сохранен как {output_file}")
 
-    #  Чтобы окно не закрывалось сразу (для Windows)
-        os.system("pause")
+#  Чтобы окно не закрывалось сразу (для Windows)
+    os.system("pause")
