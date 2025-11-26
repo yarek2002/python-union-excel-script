@@ -62,12 +62,17 @@ def merge_excel_files(folder_path, output_file, max_headers):
                 col_start = start_col + start_idx
                 col_end = col_start + len(section_cols)
                 section_df = df.iloc[header_row + 1:, col_start:col_end].copy()
+                section_df = section_df.dropna(how='all')  # drop empty rows
                 section_df.columns = make_unique_columns(section_cols)
-                # Cut at first NaN in first column
-                first_nan_idx = section_df.index[section_df.iloc[:, 0].isna()].tolist()
-                if first_nan_idx:
-                    end_row = first_nan_idx[0] - 1
-                    section_df = section_df.loc[:end_row]
+                # filter rows where first column is not numeric
+                stop_idx = None
+                for i in range(len(section_df)):
+                    val = section_df.iloc[i, 0]
+                    if pd.isna(val) or not str(val).strip().isdigit():
+                        stop_idx = i
+                        break
+                if stop_idx is not None:
+                    section_df = section_df.iloc[:stop_idx]
                 sections.append(section_df)
                 start_idx = end_idx
             # last section
@@ -75,13 +80,17 @@ def merge_excel_files(folder_path, output_file, max_headers):
                 section_cols = headers[start_idx:]
                 col_start = start_col + start_idx
                 section_df = df.iloc[header_row + 1:, col_start:].copy()
+                section_df = section_df.dropna(how='all')  # drop empty rows
                 section_df.columns = make_unique_columns(section_cols)
-                if str(section_df.columns[0]).startswith('№'):
-                    # Cut at first NaN in first column
-                    first_nan_idx = section_df.index[section_df.iloc[:, 0].isna()].tolist()
-                    if first_nan_idx:
-                        end_row = first_nan_idx[0] - 1
-                        section_df = section_df.loc[:end_row]
+                # filter rows where first column is not numeric
+                stop_idx = None
+                for i in range(len(section_df)):
+                    val = section_df.iloc[i, 0]
+                    if pd.isna(val) or not str(val).strip().isdigit():
+                        stop_idx = i
+                        break
+                if stop_idx is not None:
+                    section_df = section_df.iloc[:stop_idx]
                 sections.append(section_df)
         if sections:
             # file_df = horizontal concat of sections
