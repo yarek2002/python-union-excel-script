@@ -118,14 +118,14 @@ def extract_file_data(file_path):
 
 
             # Комментарий заказчика (если несколько колонок в строке — все собираем)
-            cust_vals = [row[c] for c in body.columns if "Комментарий заказчика" in c and not pd.isna(row[c])]
+            cust_vals = [row[c] for c in body.columns if "Комментарий Заказчика" in c and not pd.isna(row[c])]
             if cust_vals:
-                record["Комментарий заказчика"] = " | ".join(cust_vals)
+                record["Комментарий Заказчика"] = " | ".join(cust_vals)
 
             # Ответ проектной (если несколько колонок в строке — все собираем)
-            ans_vals = [row[c] for c in body.columns if "Ответ проектной" in c and not pd.isna(row[c])]
+            ans_vals = [row[c] for c in body.columns if "Ответ Проектной Организации" in c and not pd.isna(row[c])]
             if ans_vals:
-                record["Ответ проектной организации"] = " | ".join(ans_vals)
+                record["Ответ Проектной Организации"] = " | ".join(ans_vals)
 
             records.append(record)
 
