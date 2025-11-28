@@ -56,7 +56,7 @@ def get_union_headers(folder_path):
                     if h not in union:
                         union.append(h)
     return ['Файл', '№', 'Запрос от', 'Комментарий от', 'Документ', 'Раздел', 'Лист', 'Дата-1', 'Дата-2',
-            'Комментарий заказчика', 'Ответ проектной организации']
+            'Комментарий Заказчика', 'Ответ Проектной Организации']
 
 def extract_file_data(file_path):
     raw = pd.read_excel(file_path, header=None, engine="openpyxl", dtype=str)
