@@ -65,113 +65,71 @@ def extract_file_data(file_path):
         return None
 
     headers_unique = unique_within_file(headers)
-    
+
     # Вырезаем тело таблицы
     body = raw.iloc[header_start + 1:, start_col: start_col + len(headers_unique)].copy()
+
     if body.empty:
         print(f"Нет строк под шапкой: {os.path.basename(file_path)}")
         return None
-        
+
     body.columns = headers_unique
     body = body.dropna(how="all").reset_index(drop=True)
-    
+
     if body.empty:
         print(f"Все строки пустые: {os.path.basename(file_path)}")
         return None
 
-    record = defaultdict(lambda: pd.NA)
-    record["Файл"] = os.path.basename(file_path)
+    records = []  # ← сюда будем складывать записи по строкам
+    num_col = body.columns[0]  # Первая колонка — это № или №-1 и т.д.
 
-    # --- Безопасно обрезаем по первому нечисловому в первом столбце ---
-    first_col = body.iloc[:, 0]
-    stop_idx = None
-    for idx, val in enumerate(first_col):
-        if pd.isna(val) or str(val).strip() == "" or not is_numeric(val):
-            stop_idx = idx
-            break
-    
-    if stop_idx is not None:
-        body = body.iloc[:stop_idx].reset_index(drop=True)
-    
-    # Если после обрезки ничего не осталось — выходим
-    if body.empty:
-        print(f"После обрезки по номеру строки — пусто: {os.path.basename(file_path)}")
+    for i in range(len(body)):
+        val = body.iloc[i, 0]
+
+        # ЕСЛИ в колонке № есть число → делаем запись
+        if is_numeric(val) and str(val).strip() != "":
+            row = body.iloc[i]  # ← берём всю строку
+
+            record = {
+                "Файл": os.path.basename(file_path),
+                "№": str(val).strip()
+            }
+
+            # Остальные значения берем из этой же строки
+            record["Запрос от"] = row.get("Запрос от-1", row.get("Запрос от", pd.NA))
+            record["Комментарий от"] = row.get("Комментарий от-1", row.get("Комментарий от", pd.NA))
+            record["Документ"] = row.get("№ документа-1", row.get("Название документа-1",
+                                    row.get("№ документа", row.get("Название документа", pd.NA))))
+            record["Раздел"] = row.get("Раздел-1", row.get("Раздел", pd.NA))
+            record["Лист"] = row.get("Лист-1", row.get("Лист", pd.NA))
+
+            # Обработка дат для строки
+            date_vals = [row[c] for c in body.columns if c.startswith("Дата") and not pd.isna(row[c])]
+            if date_vals:
+                d1 = pd.to_datetime(date_vals[0], errors='coerce')
+                d2 = pd.to_datetime(date_vals[-1], errors='coerce')
+                if not pd.isna(d1): record["Дата-1"] = d1.strftime("%d-%m-%Y")
+                if not pd.isna(d2): record["Дата-2"] = d2.strftime("%d-%m-%Y")
+
+            # Комментарий заказчика (если несколько колонок в строке — все собираем)
+            cust_vals = [row[c] for c in body.columns if "Комментарий заказчика" in c and not pd.isna(row[c])]
+            if cust_vals:
+                record["Комментарий заказчика"] = " | ".join(cust_vals)
+
+            # Ответ проектной (если несколько колонок в строке — все собираем)
+            ans_vals = [row[c] for c in body.columns if "Ответ проектной" in c and not pd.isna(row[c])]
+            if ans_vals:
+                record["Ответ проектной организации"] = " | ".join(ans_vals)
+
+            records.append(record)
+
+    # Если ни одна строка не подошла — файл игнорируем
+    if not records:
+        print(f"В файле {os.path.basename(file_path)} не найдено строк с числовым №.")
         return None
 
-    # --- Теперь безопасно берём данные ---
-    def safe_first(col_name_candidates):
-        for col in col_name_candidates:
-            if col in body.columns:
-                cleaned = body[col].dropna()
-                if not cleaned.empty:
-                    return cleaned.iloc[0]
-        return pd.NA
+    return records  # ← возвращаем список записей, а не одну!
 
-    # Документ
-    record["Документ"] = safe_first([
-        "№ документа-1", "Название документа-1",
-        "№ документа", "Название документа"
-    ])
-
-    # Запрос от / Комментарий от
-    record["Запрос от"] = safe_first(["Запрос от-1", "Запрос от"])
-    record["Комментарий от"] = safe_first(["Комментарий от-1", "Комментарий от"])
-
-    # Раздел / Лист
-    record["Раздел"] = safe_first(["Раздел-1", "Раздел"])
-    record["Лист"] = safe_first(["Лист-1", "Лист"])
-
-    # Даты
-    date_cols = [c for c in body.columns if c.startswith("Дата")]
-    dates = []
-    for col in date_cols:
-        for v in body[col]:
-            if pd.isna(v):
-                continue
-            dv = pd.to_datetime(v, errors="coerce")
-            if not pd.isna(dv):
-                dates.append(dv.date())
-    if dates:
-        record["Дата-1"] = dates[0].strftime("%d-%m-%Y")
-        record["Дата-2"] = dates[-1].strftime("%d-%m-%Y")
-
-    # Комментарии заказчика
-    cust_cols = [c for c in body.columns if "Комментарий заказчика" in c]
-    comments = []
-    for col in cust_cols:
-        for v in body[col].dropna():
-            t = str(v).strip()
-            if t and t.lower() not in ["nan", "none"]:
-                comments.append(t)
-    if comments:
-        record["Комментарий заказчика"] = "; ".join(f"{i+1}. {t}" for i, t in enumerate(comments))
-
-    # Ответ проектной организации
-    ans_cols = [c for c in body.columns if "Ответ проектной" in c]
-    answers = []
-    for col in ans_cols:
-        for v in body[col].dropna():
-            t = str(v).strip()
-            if t and t.lower() not in ["nan", "none"]:
-                answers.append(t)
-    if answers:
-        record["Ответ проектной организации"] = "; ".join(f"{i+1}. {t}" for i, t in enumerate(answers))
-
-    # Формируем итоговую запись
-    result = {
-        "Файл": record["Файл"],
-        "№": pd.NA,
-        "Запрос от": record.get("Запрос от", pd.NA),
-        "Комментарий от": record.get("Комментарий от", pd.NA),
-        "Документ": record.get("Документ", pd.NA),
-        "Раздел": record.get("Раздел", pd.NA),
-        "Лист": record.get("Лист", pd.NA),
-        "Дата-1": record.get("Дата-1", pd.NA),
-        "Дата-2": record.get("Дата-2", pd.NA),
-        "Комментарий заказчика": record.get("Комментарий заказчика", pd.NA),
-        "Ответ проектной организации": record.get("Ответ проектной организации", pd.NA),
-    }
-    return result
 
 def process_folder(folder_path, output_file):
     files = [f for f in os.listdir(folder_path) if f.endswith(".xlsx") and not f.startswith("объединенный файл")]
