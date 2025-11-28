@@ -15,7 +15,6 @@ def is_numeric(s):
         return False
 
 def unique_within_file(headers):
-    """Уникализация повторов только внутри одного файла"""
     count = Counter(headers)
     version = defaultdict(int)
     result = []
@@ -25,7 +24,7 @@ def unique_within_file(headers):
             result.append(f"{h}-{version[h]}")
         else:
             result.append(h)
-    return result
+    return [h.replace("Дата", f"Дата-{i+1}") if h.startswith("Дата") else h for i, h in enumerate(result)]
 
 def find_header_info(file_path):
     wb = load_workbook(file_path, read_only=True)
@@ -46,141 +45,147 @@ def find_header_info(file_path):
                 return r - 1, start_col - 1, headers
     return 0, 0, []
 
-def get_all_files(folder_path):
-    return [f for f in os.listdir(folder_path) if f.endswith(".xlsx")]
+def get_union_headers(folder_path):
+    union = []
+    for name in os.listdir(folder_path):
+        if name.endswith(".xlsx") and not name.startswith("объединенный файл"):
+            path = os.path.join(folder_path, name)
+            _, _, headers = find_header_info(path)
+            if headers:
+                for h in headers:
+                    if h not in union:
+                        union.append(h)
+    return ['Файл', '№', 'Запрос от', 'Комментарий от', 'Документ', 'Раздел', 'Лист', 'Дата-1', 'Дата-2',
+            'Комментарий заказчика', 'Ответ проектной организации']
 
-def merge_excel_files(folder_path, output_file):
-    all_dfs = []
-    files = get_all_files(folder_path)
+def extract_file_data(file_path):
+    raw = pd.read_excel(file_path, header=None, engine="openpyxl", dtype=str)
+    header_start, start_col, headers = find_header_info(file_path)
 
+    if not headers:
+        return None
+
+    headers_unique = unique_within_file(headers)
+    body = raw.iloc[header_start + 1:, start_col: start_col + len(headers_unique)].copy()
+    body.columns = headers_unique
+    body = body.dropna(how="all")
+
+    record = defaultdict(lambda: pd.NA)
+    record["Файл"] = os.path.basename(file_path)
+
+    first_col = body.columns[0]
+    stop = None
+    for i in range(len(body)):
+        if not is_numeric(body.iloc[i, 0]):
+            stop = i
+            break
+    if stop is not None:
+        body = body.iloc[:stop]
+
+    # Документ (номер или название)
+    if "№ документа-1" in body.columns:
+        record["Документ"] = body["№ документа-1"].dropna().iloc[0]
+    elif "Название документа-1" in body.columns:
+        record["Документ"] = body["Название документа-1"].dropna().iloc[0]
+    elif "№ документа" in body.columns:
+        record["Документ"] = body["№ документа"].dropna().iloc[0]
+    elif "Название документа" in body.columns:
+        record["Документ"] = body["Название документа"].dropna().iloc[0]
+
+    if "Запрос от-1" in body.columns:
+        record["Запрос от"] = body["Запрос от-1"].dropna().iloc[0]
+    elif "Запрос от" in body.columns:
+        record["Запрос от"] = body["Запрос от"].dropna().iloc[0]
+
+    if "Комментарий от-1" in body.columns:
+        record["Комментарий от"] = body["Комментарий от-1"].dropna().iloc[0]
+    elif "Комментарий от" in body.columns:
+        record["Комментарий от"] = body["Комментарий от"].dropna().iloc[0]
+
+    if "Раздел-1" in body.columns:
+        record["Раздел"] = body["Раздел-1"].dropna().iloc[0]
+    elif "Раздел" in body.columns:
+        record["Раздел"] = body["Раздел"].dropna().iloc[0]
+
+    if "Лист-1" in body.columns:
+        record["Лист"] = body["Лист-1"].dropna().iloc[0]
+    elif "Лист" in body.columns:
+        record["Лист"] = body["Лист"].dropna().iloc[0]
+
+    # Дата-1 первая и Дата-2 последняя, без времени
+    date_cols = [c for c in body.columns if c.startswith("Дата")]
+    if date_cols:
+        dates = []
+        for col in date_cols:
+            for v in body[col].dropna():
+                dv = pd.to_datetime(v, errors="coerce")
+                if not pd.isna(dv):
+                    dates.append(dv)
+        if dates:
+            record["Дата-1"] = dates[0].strftime("%d-%m-%Y")
+            record["Дата-2"] = dates[-1].strftime("%d-%m-%Y")
+
+    # Комментарий заказчика (собираем все X в один список)
+    cust_cols = [c for c in body.columns if c.startswith("Комментарий заказчика")]
+    all_cust = []
+    for col in cust_cols:
+        for v in body[col].dropna():
+            t = v.strip()
+            if t:
+                all_cust.append(t)
+    if all_cust:
+        record["Комментарий заказчика"] = "; ".join(f"{i+1}. {t}" for i, t in enumerate(all_cust))
+
+    # Ответ проектной организации (аналогично)
+    ans_cols = [c for c in body.columns if c.startswith("Ответ проектной")]
+    all_ans = []
+    for col in ans_cols:
+        for v in body[col].dropna():
+            t = v.strip()
+            if t:
+                all_ans.append(t)
+    if all_ans:
+        record["Ответ проектной организации"] = "; ".join(f"{i+1}. {t}" for i, t in enumerate(all_ans))
+
+    record_renamed = {
+        "Файл": record["Файл"],
+        "№": record.get("№", pd.NA),
+        "Запрос от": record.get("Запрос от", pd.NA),
+        "Комментарий от": record.get("Комментарий от", pd.NA),
+        "Документ": record.get("Документ", pd.NA),
+        "Раздел": record.get("Раздел", pd.NA),
+        "Лист": record.get("Лист", pd.NA),
+        "Дата-1": record["Дата-1"],
+        "Дата-2": record["Дата-2"],
+        "Комментарий заказчика": record["Комментарий заказчика"],
+        "Ответ проектной организации": record["Ответ проектной организации"],
+    }
+
+    return record_renamed
+
+def process_folder(folder_path, output_file):
+    files = [f for f in os.listdir(folder_path) if f.endswith(".xlsx") and not f.startswith("объединенный файл")]
+    records = []
     for name in files:
-        # не обрабатывать выходной файл, если он в той же папке
-        if name.startswith("объединенный файл"):
-            continue
-
         path = os.path.join(folder_path, name)
-        try:
-            raw = pd.read_excel(path, header=None, engine="openpyxl", dtype=str)
-        except Exception as e:
-            print(f"Не удалось прочитать {name}: {e}")
-            continue
+        r = extract_file_data(path)
+        if r:
+            records.append(r)
 
-        header_start, start_col, headers = find_header_info(path)
-        if not headers:
-            print(f"В файле {name} не найдена шапка (№...), пропускаю.")
-            continue
-
-        # уникализируем заголовки внутри файла: Дата -> Дата-1, Дата-2 ...
-        headers_unique = unique_within_file(headers)
-
-        # позиции колонок с "Дата" (теперь с суффиксом, но проверяем по началу)
-        date_positions = [i for i, h in enumerate(headers_unique) if h.startswith("Дата")]
-
-        sections = []
-        idx = 0
-        # нарезаем секции до каждой Даты (включительно)
-        for pos in date_positions:
-            cols = headers_unique[idx:pos + 1]
-            cs = start_col + idx
-            ce = cs + len(cols)
-            sec = raw.iloc[header_start + 1:, cs:ce].copy()
-            sec.columns = cols
-            sec = sec.dropna(how="all")
-
-            # для первой секции — обрезаем по первому нечисловому в колонке №
-            if idx == 0:
-                stop = None
-                for i in range(len(sec)):
-                    if not is_numeric(sec.iloc[i, 0]):
-                        stop = i
-                        break
-                if stop is not None:
-                    sec = sec.iloc[:stop]
-
-            # обрезаем секцию по первой полностью пустой строке
-            stop = None
-            for i in range(len(sec)):
-                if sec.iloc[i].isna().all():
-                    stop = i
-                    break
-            if stop is not None:
-                sec = sec.iloc[:stop]
-
-            # если секция пустая — создаём пустой DF с нужными столбцами, чтобы concat не падал
-            if sec.shape[0] == 0:
-                sec = pd.DataFrame(columns=cols)
-
-            sections.append(sec)
-            idx = pos + 1
-
-        # последняя секция после последней "Дата"
-        if idx < len(headers_unique):
-            cols = headers_unique[idx:]
-            sec = raw.iloc[header_start + 1:, start_col + idx:].copy()
-            sec.columns = cols
-            sec = sec.dropna(how="all")
-            stop = None
-            for i in range(len(sec)):
-                if sec.iloc[i].isna().all():
-                    stop = i
-                    break
-            if stop is not None:
-                sec = sec.iloc[:stop]
-            if sec.shape[0] == 0:
-                sec = pd.DataFrame(columns=cols)
-            sections.append(sec)
-
-        # если не найдено ни одной секции — пропускаем файл
-        if not sections:
-            print(f"В файле {name} не найдено секций после нарезки — пропускаю.")
-            continue
-
-        # теперь горизонтально склеиваем секции внутри этого файла
-        try:
-            file_df = pd.concat(sections, axis=1, ignore_index=False)
-        except Exception as e:
-            # для отладки: сохраним размеры секций
-            sizes = [s.shape for s in sections]
-            raise RuntimeError(f"Ошибка при горизонтальном concat в файле {name}. sizes={sizes}. error={e}")
-
-        # вставляем имя файла и выравниваем индексы
-        file_df.insert(0, "Файл", name)
-
-        # удаляем полностью пустые колонки (если они появились)
-        file_df = file_df.dropna(axis=1, how="all")
-
-        all_dfs.append(file_df)
-
-    if not all_dfs:
-        merged_df = pd.DataFrame()
-    else:
-        # вертикально соединяем все файлы (каждый file_df должен иметь одинаковые кол-ва колонок, но если нет — pandas проставит NaN)
-        merged_df = pd.concat(all_dfs, ignore_index=True, sort=False)
-
-    # убираем время из колонок Дата-*
-    if not merged_df.empty:
-        date_columns = [c for c in merged_df.columns if str(c).startswith("Дата")]
-        for col in date_columns:
-            merged_df[col] = pd.to_datetime(merged_df[col], errors='coerce').dt.strftime("%d-%m-%Y")
-
-    # сохраняем результат
-    merged_df.to_excel(output_file, index=False)
+    merged = pd.DataFrame(records, columns=get_union_headers(folder_path))
+    merged.to_excel(output_file, index=False)
     return output_file
 
 if __name__ == "__main__":
     try:
         folder = os.getcwd()
-        outname = f"объединенный файл {datetime.now().strftime('%Y-%m-%d')}.xlsx"
-        print("Папка:", folder)
-        print("Файлы для обработки:", get_all_files(folder))
-        res = merge_excel_files(folder, outname)
-        print("Успешно сохранено:", res)
-    except Exception as exc:
+        out = f"объединенный файл {datetime.now().strftime('%Y-%m-%d')}.xlsx"
+        res = process_folder(folder, out)
+        print("Готово:", res)
+    except Exception as e:
         tb = traceback.format_exc()
-        print("Скрипт упал с ошибкой:\n", tb)
-        # записать лог для удобного анализа
+        print("Ошибка:\n", tb)
         with open("error_log.txt", "w", encoding="utf-8") as f:
             f.write(tb)
-        print("Трассировка записана в error_log.txt")
     finally:
         os.system("pause")
