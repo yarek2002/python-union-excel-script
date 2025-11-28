@@ -138,7 +138,8 @@ def process_folder(folder_path, output_file):
         path = os.path.join(folder_path, name)
         r = extract_file_data(path)
         if r:
-            records.append(r)
+            records.extend(r)  # ← было append (добавляло 1 объект), теперь extend (добавляет все строки)
+
 
     merged = pd.DataFrame(records, columns=get_union_headers(folder_path))
     merged.to_excel(output_file, index=False)
