@@ -105,8 +105,8 @@ def extract_file_data(file_path):
                 if not pd.isna(d1): record["Дата-1"] = d1.strftime("%d-%m-%Y")
                 if not pd.isna(d2): record["Дата-2"] = d2.strftime("%d-%m-%Y")
 
-            # ✅ Сбор и нумерация комментариев заказчика
-            cust_vals = [row[c] for c in body.columns if "Комментарий" in c and not pd.isna(row[c])]
+            #  Сбор и нумерация комментариев заказчика
+            cust_vals = [row[c] for c in body.columns if "Комментарий Заказчика" in c and not pd.isna(row[c])]
             if cust_vals:
                 cust_list = []
                 for v in cust_vals:
@@ -116,8 +116,8 @@ def extract_file_data(file_path):
                 if cust_list:
                     record["Комментарий Заказчика"] = " ".join(f"{idx+1}) {c}" for idx, c in enumerate(cust_list))
 
-            # ✅ Сбор и нумерация ответов проектной организации
-            ans_vals = [row[c] for c in body.columns if "Ответ" in c and not pd.isna(row[c])]
+            #  Сбор и нумерация ответов проектной организации
+            ans_vals = [row[c] for c in body.columns if "Ответ Проектной Организации" in c and not pd.isna(row[c])]
             if ans_vals:
                 ans_list = []
                 for v in ans_vals:
