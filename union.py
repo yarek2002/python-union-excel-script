@@ -105,11 +105,17 @@ def extract_file_data(file_path):
 
             # Обработка дат для строки
             date_vals = [row[c] for c in body.columns if c.startswith("Дата") and not pd.isna(row[c])]
-            if date_vals:
+            if len(date_vals) == 1:  # ← только одна дата
+                d = pd.to_datetime(date_vals[0], errors='coerce')
+                if not pd.isna(d):
+                    record["Дата-1"] = d.strftime("%d-%m-%Y")
+                record["Дата-2"] = pd.NA  # можно вообще не писать, но лучше занулить, чтобы колонка осталась
+            elif len(date_vals) > 1:  # ← даты две и более
                 d1 = pd.to_datetime(date_vals[0], errors='coerce')
                 d2 = pd.to_datetime(date_vals[-1], errors='coerce')
                 if not pd.isna(d1): record["Дата-1"] = d1.strftime("%d-%m-%Y")
                 if not pd.isna(d2): record["Дата-2"] = d2.strftime("%d-%m-%Y")
+
 
             # Комментарий заказчика (если несколько колонок в строке — все собираем)
             cust_vals = [row[c] for c in body.columns if "Комментарий заказчика" in c and not pd.isna(row[c])]
