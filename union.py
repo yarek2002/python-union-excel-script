@@ -73,14 +73,18 @@ def extract_file_data(file_path):
     record = defaultdict(lambda: pd.NA)
     record["Файл"] = os.path.basename(file_path)
 
-    first_col = body.columns[0]
     stop = None
     for i in range(len(body)):
-        if not is_numeric(body.iloc[i, 0]):
+        val = body.iloc[i, 0]
+
+    # если NaN, пусто или не число → конец 1 секции
+        if pd.isna(val) or str(val).strip() == "" or not is_numeric(val):
             stop = i
             break
+
     if stop is not None:
         body = body.iloc[:stop]
+
 
     # Документ (номер или название)
     if "№ документа-1" in body.columns:
