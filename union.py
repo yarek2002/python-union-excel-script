@@ -131,6 +131,11 @@ def extract_file_data(file_path):
 
             record["Текущий статус"] = cur_status
 
+            #  Считаем количество столбцов "Комментарий Заказчика" в файле
+            iteration_count = sum(1 for h in body.columns if "Комментарий Заказчика" in h)
+            record["Количество итераций"] = iteration_count
+
+
             records.append(record)
 
     if not records:
