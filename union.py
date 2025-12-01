@@ -113,10 +113,25 @@ def extract_file_data(file_path):
                 if ans_list:
                     record["Ответ Проектной Организации"] = " ".join(f"{idx+1}) {a}" for idx, a in enumerate(ans_list))
 
-            status_vals = [row[c] for c in body.columns if ("Статус" in c) and not pd.isna(row[c])]
-            status_list = [str(v).strip() for v in status_vals if str(v).strip().lower() not in ["nan","none",""]]
-            if status_list:
-                record["Статус (примечание)"] = " ".join(status_list)
+                        #  Определяем последний заполненный столбец из нужных групп
+            check_cols = []
+            for c in body.columns:
+                if ("Статус" in c) or ("Ответ" in c) or ("Проектной Организации" in c) or ("Комментарий Заказчика" in c):
+                    check_cols.append(c)
+
+            last_filled_col = None
+            for c in reversed(check_cols):  # идём с конца вправо
+                if not pd.isna(row[c]) and str(row[c]).strip() != "":
+                    last_filled_col = c
+                    break
+
+            #  Заполняем "Статус (примечание)" только если последний непустой — это статус
+            if last_filled_col and "Статус" in last_filled_col:
+                record["Статус (примечание)"] = str(row[last_filled_col]).strip()
+            else:
+                record["Статус (примечание)"] = ""  # пусто, если последний был ответом или комментарием
+
+                        
 
                     # 1. Группы колонок
             status_cols  = [c for c in body.columns if "Статус" in c]
