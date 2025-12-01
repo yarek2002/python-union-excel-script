@@ -118,16 +118,17 @@ def extract_file_data(file_path):
             if status_list:
                 record["Статус (примечание)"] = " ".join(status_list)
 
-                    #  Берём последние столбцы нужных групп
-            last_status_col = [c for c in body.columns if "Статус" in c]
-            last_answer_col = [c for c in body.columns if "Ответ Проектной Организации" in c]
-            last_comment_col = [c for c in body.columns if "Комментарий Заказчика" in c]
+           #  Фильтруем названия колонок по группам
+            status_cols = [c for c in body.columns if "Статус" in c]
+            answer_cols = [c for c in body.columns if "Ответ" in c or "Проектной Организации" in c]
+            comment_cols = [c for c in body.columns if "Комментарий Заказчика" in c]
 
-            last_status_val = row[last_status_col[-1]] if last_status_col else pd.NA
-            last_answer_val = row[last_answer_col[-1]] if last_answer_col else pd.NA
-            last_comment_val = row[last_comment_col[-1]] if last_comment_col else pd.NA
+            #  Берём последний (самый правый) столбец каждой группы
+            last_status_val = row[status_cols[-1]] if status_cols else pd.NA
+            last_answer_val = row[answer_cols[-1]] if answer_cols else pd.NA
+            last_comment_val = row[comment_cols[-1]] if comment_cols else pd.NA
 
-            #  Определяем текущий статус по приоритету последних колонок
+            #  Определяем статус по приоритету последних колонок В СТРОКЕ
             if not pd.isna(last_status_val) and str(last_status_val).strip() != "":
                 cur_status = "Исправлено"
             elif not pd.isna(last_answer_val) and str(last_answer_val).strip() != "":
@@ -135,13 +136,14 @@ def extract_file_data(file_path):
             elif not pd.isna(last_comment_val) and str(last_comment_val).strip() != "":
                 cur_status = "Не снято"
             else:
-                cur_status = "Не определён"
+                cur_status = ""
 
             record["Текущий статус"] = cur_status
 
-            #  Считаем количество столбцов "Комментарий Заказчика" в файле
-            iteration_count = sum(1 for h in body.columns if "Комментарий Заказчика" in h)
+            #  Считаем количество итераций по количеству колонок "Комментарий Заказчика" В ШАПКЕ
+            iteration_count = len(comment_cols)
             record["Количество итераций"] = iteration_count
+
 
 
             records.append(record)
