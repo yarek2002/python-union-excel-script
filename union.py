@@ -133,14 +133,15 @@ def extract_file_data(file_path):
 
                         
 
-                        # 1. Берём все интересующие колонки В ПОРЯДКЕ ФАЙЛА
+                        # 1. Списки колонок по группам (в порядке как они есть в файле Excel)
             status_cols  = [c for c in body.columns if "Статус" in c]
             answer_cols  = [c for c in body.columns if "Ответ Проектной Организации" in c]
             comment_cols = [c for c in body.columns if "Комментарий Заказчика" in c]
 
-            target_cols = [c for c in body.columns if c in status_cols or c in answer_cols or c in comment_cols]
+            # 2. Собираем все 3 группы в порядке файла, без пересборки вручную
+            target_cols = [c for c in body.columns if c in (comment_cols + answer_cols + status_cols)]
 
-            # 2. Идём СПРАВА налево ПО ОРИГИНАЛЬНОМУ ПОРЯДКУ EXCEL
+            # 3. Ищем самый правый заполненный столбец в ЭТОЙ строке
             last_filled_col = None
             last_filled_val = ""
 
@@ -151,13 +152,13 @@ def extract_file_data(file_path):
                     last_filled_val = str(val).strip()
                     break
 
-            # 3. Заполняем "Статус (примечание)" только если последний = статус
-            if last_filled_col and "Статус" in last_filled_col:
+            # 4. Заполняем "Статус (примечание)" только если последний заполненный столбец был статусом
+            if last_filled_col and last_filled_col in status_cols:
                 record["Статус (примечание)"] = last_filled_val
             else:
                 record["Статус (примечание)"] = ""
 
-            # 4. Определяем "Текущий статус" по приоритету найденного столбца
+            # 5. Определяем "Текущий статус" по тому, к какой группе относился последний заполненный столбец
             if last_filled_col in comment_cols:
                 record["Текущий статус"] = "Не снято"
             elif last_filled_col in answer_cols:
@@ -165,9 +166,15 @@ def extract_file_data(file_path):
             elif last_filled_col in status_cols:
                 record["Текущий статус"] = "Исправлено"
 
+            # 6. Считаем итерации ТОЛЬКО по заполненным Комментарий Заказчика В ЭТОЙ строке
+            iteration_filled = 0
+            for col in comment_cols:
+                v = row[col]
+                if not pd.isna(v) and str(v).strip().lower() not in ["nan", "none", ""]:
+                    iteration_filled += 1
 
-            # 5. Количество итераций = количество колонок Комментарий Заказчика в шапке
-            record["Количество итераций"] = len(comment_cols)
+            record["Количество итераций"] = iteration_filled
+
 
 
 
