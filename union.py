@@ -153,12 +153,12 @@ def extract_file_data(file_path):
                     break  # как только нашли самый правый заполненный — дальше не смотрим
 
             # 4. Определяем статус в зависимости от того, какая это была колонка
-            if last_filled_col in status_cols:
-                cur_status = "Исправлено"
+            if last_filled_col in comment_cols:
+                cur_status = "Не снято"
             elif last_filled_col in answer_cols:
                 cur_status = "Отработано"
-            elif last_filled_col in comment_cols:
-                cur_status = "Не снято"
+            elif last_filled_col in status_cols:
+                cur_status = "Исправлено"
             else:
                 cur_status = ""  # fallback, если вдруг ни один не найден (ячейка пустая)
 
