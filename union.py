@@ -118,31 +118,40 @@ def extract_file_data(file_path):
             if status_list:
                 record["Статус (примечание)"] = " ".join(status_list)
 
-           #  Фильтруем названия колонок по группам
-            status_cols = [c for c in body.columns if "Статус" in c]
-            answer_cols = [c for c in body.columns if "Ответ" in c or "Проектной Организации" in c]
+                    # 1. Группы колонок
+            status_cols  = [c for c in body.columns if "Статус" in c]
+            answer_cols  = [c for c in body.columns if "Ответ Проектной Организации" in c]
             comment_cols = [c for c in body.columns if "Комментарий Заказчика" in c]
 
-            #  Берём последний (самый правый) столбец каждой группы
-            last_status_val = row[status_cols[-1]] if status_cols else pd.NA
-            last_answer_val = row[answer_cols[-1]] if answer_cols else pd.NA
-            last_comment_val = row[comment_cols[-1]] if comment_cols else pd.NA
+            # 2. Объединяем все интересующие колонки в порядке как они идут в файле (слева → направо)
+            target_cols = comment_cols + answer_cols + status_cols
 
-            #  Определяем статус по приоритету последних колонок В СТРОКЕ
-            if not pd.isna(last_status_val) and str(last_status_val).strip() != "":
+            # 3. Находим самый правый заполненный столбец в текущей строке
+            last_filled_val = pd.NA
+            last_filled_col = None
+
+            for col in reversed(target_cols):  # идём с конца строки Excel (правой стороны)
+                val = row[col]
+                if not pd.isna(val) and str(val).strip() != "":
+                    last_filled_val = val
+                    last_filled_col = col
+                    break  # как только нашли самый правый заполненный — дальше не смотрим
+
+            # 4. Определяем статус в зависимости от того, какая это была колонка
+            if last_filled_col in status_cols:
                 cur_status = "Исправлено"
-            elif not pd.isna(last_answer_val) and str(last_answer_val).strip() != "":
+            elif last_filled_col in answer_cols:
                 cur_status = "Отработано"
-            elif not pd.isna(last_comment_val) and str(last_comment_val).strip() != "":
+            elif last_filled_col in comment_cols:
                 cur_status = "Не снято"
             else:
-                cur_status = ""
+                cur_status = ""  # fallback, если вдруг ни один не найден (ячейка пустая)
 
             record["Текущий статус"] = cur_status
 
-            #  Считаем количество итераций по количеству колонок "Комментарий Заказчика" В ШАПКЕ
-            iteration_count = len(comment_cols)
-            record["Количество итераций"] = iteration_count
+            # 5. Количество итераций = количество колонок Комментарий Заказчика в шапке
+            record["Количество итераций"] = len(comment_cols)
+
 
 
 
