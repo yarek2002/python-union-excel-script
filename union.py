@@ -133,40 +133,41 @@ def extract_file_data(file_path):
 
                         
 
-                    # 1. Группы колонок
+                        # 1. Берём все интересующие колонки В ПОРЯДКЕ ФАЙЛА
             status_cols  = [c for c in body.columns if "Статус" in c]
             answer_cols  = [c for c in body.columns if "Ответ Проектной Организации" in c]
             comment_cols = [c for c in body.columns if "Комментарий Заказчика" in c]
 
-            # 2. Объединяем все интересующие колонки в порядке как они идут в файле (слева → направо)
-            target_cols = comment_cols + answer_cols + status_cols
+            target_cols = [c for c in body.columns if c in status_cols or c in answer_cols or c in comment_cols]
 
-            # 3. Находим самый правый заполненный столбец в текущей строке
-            last_filled_val = pd.NA
+            # 2. Идём СПРАВА налево ПО ОРИГИНАЛЬНОМУ ПОРЯДКУ EXCEL
             last_filled_col = None
+            last_filled_val = ""
 
-            for col in reversed(target_cols):  # идём с конца строки Excel (правой стороны)
+            for col in reversed(target_cols):
                 val = row[col]
                 if not pd.isna(val) and str(val).strip() != "":
-                    last_filled_val = val
                     last_filled_col = col
-                    break  # как только нашли самый правый заполненный — дальше не смотрим
+                    last_filled_val = str(val).strip()
+                    break
 
-            # 4. Определяем статус в зависимости от того, какая это была колонка
-            if last_filled_col in comment_cols:
-                cur_status = "Не снято"
-            elif last_filled_col in answer_cols:
-                cur_status = "Отработано"
-            elif last_filled_col in status_cols:
-                cur_status = "Исправлено"
+            # 3. Заполняем "Статус (примечание)" только если последний = статус
+            if last_filled_col and "Статус" in last_filled_col:
+                record["Статус (примечание)"] = last_filled_val
             else:
-                cur_status = ""  # fallback, если вдруг ни один не найден (ячейка пустая)
+                record["Статус (примечание)"] = ""
 
-            record["Текущий статус"] = cur_status
+            # 4. Определяем "Текущий статус" по приоритету найденного столбца
+            if last_filled_col in comment_cols:
+                record["Текущий статус"] = "Не снято"
+            elif last_filled_col in answer_cols:
+                record["Текущий статус"] = "Отработано"
+            elif last_filled_col in status_cols:
+                record["Текущий статус"] = "Исправлено"
+
 
             # 5. Количество итераций = количество колонок Комментарий Заказчика в шапке
             record["Количество итераций"] = len(comment_cols)
-
 
 
 
