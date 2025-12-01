@@ -105,13 +105,13 @@ def extract_file_data(file_path):
             if cust_vals:
                 cust_list = [str(v).strip() for v in cust_vals if str(v).strip().lower() not in ["nan","none",""]]
                 if cust_list:
-                    record["Комментарий Заказчика"] = " ".join(f"{idx+1}) {c}" for idx, c in enumerate(cust_list))
+                    record["Комментарий Заказчика"] = "\n".join(f"{idx+1}) {c}" for idx, c in enumerate(cust_list))
 
             ans_vals = [row[c] for c in body.columns if "Ответ Проектной Организации" in c and not pd.isna(row[c])]
             if ans_vals:
                 ans_list = [str(v).strip() for v in ans_vals if str(v).strip().lower() not in ["nan","none",""]]
                 if ans_list:
-                    record["Ответ Проектной Организации"] = " ".join(f"{idx+1}) {a}" for idx, a in enumerate(ans_list))
+                    record["Ответ Проектной Организации"] = "\n".join(f"{idx+1}) {a}" for idx, a in enumerate(ans_list))
 
                         #  Определяем последний заполненный столбец из нужных групп
             check_cols = []
