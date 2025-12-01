@@ -118,13 +118,21 @@ def extract_file_data(file_path):
             if status_list:
                 record["Статус (примечание)"] = " ".join(status_list)
 
-            # ✨ Вычисляем текущий статус по вашей логике
-            cur_status = pd.NA
-            if row.get("Статус", pd.NA) not in [pd.NA, "", "nan", "none"] or record.get("Статус (примечание)"):
+                    #  Берём последние столбцы нужных групп
+            last_status_col = [c for c in body.columns if "Статус" in c]
+            last_answer_col = [c for c in body.columns if "Ответ Проектной Организации" in c]
+            last_comment_col = [c for c in body.columns if "Комментарий Заказчика" in c]
+
+            last_status_val = row[last_status_col[-1]] if last_status_col else pd.NA
+            last_answer_val = row[last_answer_col[-1]] if last_answer_col else pd.NA
+            last_comment_val = row[last_comment_col[-1]] if last_comment_col else pd.NA
+
+            #  Определяем текущий статус по приоритету последних колонок
+            if not pd.isna(last_status_val) and str(last_status_val).strip() != "":
                 cur_status = "Исправлено"
-            elif record.get("Ответ Проектной Организации"):
+            elif not pd.isna(last_answer_val) and str(last_answer_val).strip() != "":
                 cur_status = "Отработано"
-            elif record.get("Комментарий Заказчика"):
+            elif not pd.isna(last_comment_val) and str(last_comment_val).strip() != "":
                 cur_status = "Не снято"
             else:
                 cur_status = "Не определён"
